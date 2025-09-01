@@ -208,8 +208,7 @@ const Reallocation = ({ data }) => {
 
         // Write to Realtime Database
         const reallocationRef = ref(database, `reallocation-bk/${chassis}`);
-        await set(reallocationRef, reallocationData);
-        console.log("11111")
+        await push(reallocationRef, reallocationData);
 
         // Queue email in Firestore
         await addDoc(collection(firestoreDB, "reallocation_mail"), {
