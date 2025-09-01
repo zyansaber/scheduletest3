@@ -709,7 +709,7 @@ const Reallocation = ({ data }) => {
                           }`}>
                             {request.issue.type}
                           </div>
-                          <div className="text-gray-400 mt-1">{request.issue.timestamp}</div>
+                          <div className="text-gray-400 mt-1">{String(request.issue.timestamp)}</div>
                         </div>
                       ) : (
                         <select
