@@ -47,10 +47,22 @@ const Reallocation = ({ data }) => {
       const snapshot = await get(reallocationRef);
       if (snapshot.exists()) {
         const requestsData = snapshot.val();
-        const requestsList = Object.entries(requestsData).map(([chassis, data]) => ({
-          chassisNumber: chassis,
-          ...data
-        })).sort((a, b) => new Date(b.submitTime) - new Date(a.submitTime));
+  
+        const parseDateTime = (s) => {
+          if (!s) return 0;
+          const [datePart, timePart] = s.split(" ");
+          const [day, month, year] = datePart.split("/").map(Number);
+          const [hours, minutes, seconds] = timePart.split(":").map(Number);
+          return new Date(year, month - 1, day, hours, minutes, seconds).getTime();
+        };
+  
+        const requestsList = Object.entries(requestsData)
+          .map(([chassis, data]) => ({
+            chassisNumber: chassis,
+            ...data
+          }))
+          .sort((a, b) => parseDateTime(b.submitTime) - parseDateTime(a.submitTime));
+  
         setReallocationRequests(requestsList);
       }
     } catch (error) {
