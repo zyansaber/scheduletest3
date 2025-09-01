@@ -608,7 +608,7 @@ const Reallocation = ({ data }) => {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                  <th className="px-4 py-2 text-left text-xs font-medium text-white uppercase bg-blue-600 rounded-t-md">
                     Chassis
                   </th>
                   <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
@@ -637,7 +637,7 @@ const Reallocation = ({ data }) => {
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredRequests.map((request, index) => (
                   <tr key={index} className="hover:bg-gray-50">
-                    <td className="px-4 py-2 text-sm font-medium text-gray-900">
+                    <td className="px-4 py-2 text-sm font-semibold text-blue-700 bg-blue-50">
                       {request.chassisNumber}
                     </td>
                     <td className="px-4 py-2 text-sm text-gray-500">
