@@ -615,7 +615,7 @@ const Reallocation = ({ data }) => {
                   <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                     From
                   </th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                  <th className="px-4 py-2 text-left text-xs font-medium text-white uppercase bg-blue-600 rounded-t-md">
                     To
                   </th>
                   <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
@@ -644,7 +644,7 @@ const Reallocation = ({ data }) => {
                     <td className="px-4 py-2 text-sm text-gray-500">
                       {request.originalDealer}
                     </td>
-                    <td className="px-4 py-2 text-sm text-gray-500">
+                    <td className="px-4 py-2 text-sm font-semibold text-blue-700 bg-blue-50">
                       {request.reallocatedTo}
                     </td>
                     <td className="px-4 py-2 text-sm text-gray-500">
