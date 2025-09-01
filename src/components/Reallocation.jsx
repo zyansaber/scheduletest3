@@ -700,16 +700,18 @@ const Reallocation = ({ data }) => {
                       {request.submitTime}
                     </td>
                     <td className="px-4 py-2 text-sm text-gray-500">
-                      {request.issue ? (
+                      {request.issue && typeof request.issue === 'object' && (
                         <div className="text-xs">
                           <div className={`px-2 py-1 rounded text-white text-center ${
                             request.issue.type === 'SAP Issue' ? 'bg-red-500' :
                             request.issue.type === 'Invoice Issue' ? 'bg-orange-500' :
                             request.issue.type === 'Dispatched Status Issue' ? 'bg-blue-500' : 'bg-gray-500'
                           }`}>
-                            {request.issue.type}
+                            {request.issue.type || 'Unknown'}
                           </div>
-                          <div className="text-gray-400 mt-1">{request.issue.timestamp}</div>
+                          <div className="text-gray-400 mt-1">
+                            {request.issue.timestamp || 'N/A'}
+                          </div>
                         </div>
                       ) : (
                         <select
