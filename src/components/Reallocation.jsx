@@ -50,9 +50,18 @@ const Reallocation = ({ data }) => {
   
         const parseDateTime = (s) => {
           if (!s) return 0;
-          const [datePart, timePart] = s.split(" ");
+        
+          // Example: "27/08/2025, 08:46:41 am"
+          const [datePart, timePart, ampm] = s.replace(",", "").split(" ");
           const [day, month, year] = datePart.split("/").map(Number);
-          const [hours, minutes, seconds] = timePart.split(":").map(Number);
+          const [hoursStr, minutesStr, secondsStr] = timePart.split(":");
+          let hours = parseInt(hoursStr, 10);
+          const minutes = parseInt(minutesStr, 10);
+          const seconds = parseInt(secondsStr, 10);
+        
+          if (ampm?.toLowerCase() === "pm" && hours < 12) hours += 12;
+          if (ampm?.toLowerCase() === "am" && hours === 12) hours = 0;
+        
           return new Date(year, month - 1, day, hours, minutes, seconds).getTime();
         };
   
