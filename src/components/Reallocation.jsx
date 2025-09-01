@@ -43,7 +43,7 @@ const Reallocation = ({ data }) => {
 
   const loadReallocationRequests = async () => {
     try {
-      const reallocationRef = ref(database, 'reallocation');
+      const reallocationRef = ref(database, 'reallocation-bk');
       const snapshot = await get(reallocationRef);
       if (snapshot.exists()) {
         const requestsData = snapshot.val();
@@ -227,13 +227,13 @@ const Reallocation = ({ data }) => {
         };
 
         // Write to Realtime Database
-        const reallocationRef = ref(database, `reallocation/${chassis}`);
+        const reallocationRef = ref(database, `reallocation-bk/${chassis}`);
         await set(reallocationRef, reallocationData);
         console.log("11111")
 
         // Queue email in Firestore
         await addDoc(collection(firestoreDB, "reallocation_mail"), {
-          to: ["darin@regentrv.com.au", "planning@regentrv.com.au"],
+          to: ["dongning@regentrv.com.au"],
           message: {
             subject: `New Reallocation Request: Chassis ${chassis}`,
             text: `Chassis number ${chassis} has been requested to dealer ${dealer}.`,
@@ -270,7 +270,7 @@ const Reallocation = ({ data }) => {
 
   const handleMarkDone = async (chassisNumber) => {
     try {
-      const reallocationRef = ref(database, `reallocation/${chassisNumber}/status`);
+      const reallocationRef = ref(database, `reallocation-bk/${chassisNumber}/status`);
       await set(reallocationRef, 'completed');
 
       // Reload requests
@@ -288,7 +288,7 @@ const Reallocation = ({ data }) => {
   const handleIssueUpdate = async (chassisNumber, issueType) => {
     try {
 
-      const issueRef = ref(database, `reallocation/${chassisNumber}/issue`);
+      const issueRef = ref(database, `reallocation-bk/${chassisNumber}/issue`);
 
       await set(issueRef, {
         type: issueType,
@@ -297,7 +297,7 @@ const Reallocation = ({ data }) => {
 
       // Queue completion email in Firestore
       await addDoc(collection(firestoreDB, "reallocation_mail"), {
-        to: ["planning@regentrv.com.au","darin@regentrv.com.au", "accounts.receivable@regentrv.com.au", "michael@regentrv.com.au","Ashley@regentrv.com.au"],
+        to: ["dongning@regentrv.com.au"],
         message: {
           subject: `New Issue: Chassis ${chassisNumber}`,
           html: `Chassis number <strong>${chassisNumber}</strong> has been marked as <strong>${issueType}</strong>.`,
