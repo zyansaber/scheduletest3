@@ -50,7 +50,8 @@ const Reallocation = ({ data }) => {
         const requestsList = Object.entries(requestsData).map(([chassis, data]) => ({
           chassisNumber: chassis,
           ...data
-        }));
+        })).sort((a, b) => new Date(b.submitTime) - new Date(a.submitTime));
+        
         setReallocationRequests(requestsList);
       }
     } catch (error) {
