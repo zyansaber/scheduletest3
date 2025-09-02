@@ -297,7 +297,7 @@ const Reallocation = ({ data }) => {
   const handleIssueUpdate = async (chassisNumber, issueType, requestId) => {
     try {
 
-      const issueRef = ref(database, `reallocation-bk/${chassisNumber}/${requestId}/status`);
+      const issueRef = ref(database, `reallocation-bk/${chassisNumber}/${requestId}/issue`);
 
       await set(issueRef, {
         type: issueType,
@@ -709,7 +709,7 @@ const Reallocation = ({ data }) => {
                           }`}>
                             {request.issue.type}
                           </div>
-                          <div className="text-gray-400 mt-1">{String(request.issue.timestamp)}</div>
+                          <div className="text-gray-400 mt-1">{request.issue.timestamp}</div>
                         </div>
                       ) : (
                         <select
