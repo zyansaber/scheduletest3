@@ -678,7 +678,9 @@ const Reallocation = ({ data }) => {
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredRequests.map((request, index) => {
-                  const rowBgColor = getChassisColor(request.chassisNumber); // use external function
+                  const rowBgColor = chassisCount[request.chassisNumber] > 1
+                    ? getChassisColor(request.chassisNumber)
+                    : 'white';
                   return (
                     <tr key={index} style={{ backgroundColor: rowBgColor }}>
                       <td className="px-4 py-2 text-sm text-gray-800">
