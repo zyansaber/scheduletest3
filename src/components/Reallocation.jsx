@@ -655,13 +655,13 @@ const Reallocation = ({ data }) => {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-white uppercase bg-blue-600">
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                     Chassis
                   </th>
                   <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                     From
                   </th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-white uppercase bg-blue-600">
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                     To
                   </th>
                   <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
@@ -688,13 +688,13 @@ const Reallocation = ({ data }) => {
                     : 'white';
                   return (
                     <tr key={index} style={{ backgroundColor: rowBgColor }}>
-                      <td className="px-4 py-2 text-sm text-gray-800">
+                      <td className="px-4 py-2 text-sm text-gray-1500">
                         {request.chassisNumber}
                       </td>
                       <td className="px-4 py-2 text-sm text-gray-500">
                         {request.originalDealer}
                       </td>
-                      <td className="px-4 py-2 text-sm text-gray-800">
+                      <td className="px-4 py-2 text-sm text-gray-1500">
                         {request.reallocatedTo}
                       </td>
                       <td className="px-4 py-2 text-sm text-gray-500">
@@ -708,15 +708,7 @@ const Reallocation = ({ data }) => {
                           {request.status === 'completed' ? 'Done' : request.status}
                         </span>
                       </td>
-                      <td className="px-4 py-2 text-sm text-gray-500">
-                        <span className={`px-2 py-1 text-xs rounded ${
-                          (request.signedPlansReceived || '').toLowerCase() === 'no'
-                            ? 'bg-red-100 text-red-800'
-                            : 'bg-green-100 text-green-800'
-                        }`}>
-                          {request.signedPlansReceived || 'N/A'}
-                        </span>
-                      </td>
+                      <td className="px-4 py-2 text-sm text-gray-500">{request.signedPlansReceived || 'N/A'}</td>
                       <td className="px-4 py-2 text-sm text-gray-500">{request.submitTime}</td>
                       <td className="px-4 py-2 text-sm text-gray-500">
                         {request.issue ? (
