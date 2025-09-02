@@ -395,12 +395,11 @@ const Reallocation = ({ data }) => {
   };
 
   const chassisColorMap = {};
-  const getChassisColor = (chassis, chassisCount) => {
-    if (!chassis) return 'white';
-    if (!chassisCount[chassis] || chassisCount[chassis] <= 1) return 'white';
+  const getChassisColor = (chassis) => { 
+    if (!chassis) return '';
   
     if (!chassisColorMap[chassis]) {
-      // Deterministic pastel color based on chassis string
+      // Generate a deterministic hue based on chassis string
       let hash = 0;
       for (let i = 0; i < chassis.length; i++) {
         hash = chassis.charCodeAt(i) + ((hash << 5) - hash);
