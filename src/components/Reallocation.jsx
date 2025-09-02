@@ -405,6 +405,11 @@ const Reallocation = ({ data }) => {
     return chassisColorMap[chassis];
   };
 
+  const chassisCount = {};
+    filteredRequests.forEach(req => {
+      const ch = req.chassisNumber;
+      if (ch) chassisCount[ch] = (chassisCount[ch] || 0) + 1;
+    });
 
   return (
     <div className="p-4 max-w-7xl mx-auto">
