@@ -394,6 +394,18 @@ const Reallocation = ({ data }) => {
     document.body.removeChild(link);
   };
 
+  const chassisColorMap = {};
+  const getChassisColor = (chassis) => {
+    if (!chassis) return '';
+    if (!chassisColorMap[chassis]) {
+      // Generate a color (random pastel)
+      const hue = Math.floor(Math.random() * 360);
+      chassisColorMap[chassis] = `hsl(${hue}, 70%, 90%)`;
+    }
+    return chassisColorMap[chassis];
+  };
+
+
   return (
     <div className="p-4 max-w-7xl mx-auto">
       <h2 className="text-2xl font-semibold mb-4 text-gray-800">Dealer Reallocation</h2>
@@ -665,84 +677,84 @@ const Reallocation = ({ data }) => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredRequests.map((request, index) => (
-                  <tr key={index} className="hover:bg-gray-50">
-                    <td className="px-4 py-2 text-sm font-semibold text-blue-700 bg-blue-50">
-                      {request.chassisNumber}
-                    </td>
-                    <td className="px-4 py-2 text-sm text-gray-500">
-                      {request.originalDealer}
-                    </td>
-                    <td className="px-4 py-2 text-sm font-semibold text-blue-700 bg-blue-50">
-                      {request.reallocatedTo}
-                    </td>
-                    <td className="px-4 py-2 text-sm text-gray-500">
-                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                        request.status === 'completed' 
-                          ? 'bg-green-100 text-green-800'
-                          : request.status === 'finished'
-                          ? 'bg-blue-100 text-blue-800'
-                          : 'bg-yellow-100 text-yellow-800'
-                      }`}>
-                        {request.status === 'completed' ? 'Done' : request.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2 text-sm text-gray-500">
-                      <span className={`px-2 py-1 text-xs rounded ${
-                        (request.signedPlansReceived || '').toLowerCase() === 'no'
-                          ? 'bg-red-100 text-red-800'
-                          : 'bg-green-100 text-green-800'
-                      }`}>
-                        {request.signedPlansReceived || 'N/A'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2 text-sm text-gray-500">
-                      {request.submitTime}
-                    </td>
-                    <td className="px-4 py-2 text-sm text-gray-500">
-                      {request.issue ? (
-                        <div className="text-xs">
-                          <div className={`px-2 py-1 rounded text-white text-center ${
-                            request.issue.type === 'SAP Issue' ? 'bg-red-500' :
-                            request.issue.type === 'Invoice Issue' ? 'bg-orange-500' :
-                            request.issue.type === 'Dispatched Status Issue' ? 'bg-blue-500' : 'bg-gray-500'
-                          }`}>
-                            {request.issue.type}
+                {filteredRequests.map((request, index) => {
+                  const rowBgColor = getChassisColor(request.chassisNumber); // use external function
+                  return (
+                    <tr key={index} style={{ backgroundColor: rowBgColor }}>
+                      <td className="px-4 py-2 text-sm text-gray-800">
+                        {request.chassisNumber}
+                      </td>
+                      <td className="px-4 py-2 text-sm text-gray-500">
+                        {request.originalDealer}
+                      </td>
+                      <td className="px-4 py-2 text-sm text-gray-800">
+                        {request.reallocatedTo}
+                      </td>
+                      <td className="px-4 py-2 text-sm text-gray-500">
+                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                          request.status === 'completed' 
+                            ? 'bg-green-100 text-green-800'
+                            : request.status === 'finished'
+                            ? 'bg-blue-100 text-blue-800'
+                            : 'bg-yellow-100 text-yellow-800'
+                        }`}>
+                          {request.status === 'completed' ? 'Done' : request.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2 text-sm text-gray-500">
+                        <span className={`px-2 py-1 text-xs rounded ${
+                          (request.signedPlansReceived || '').toLowerCase() === 'no'
+                            ? 'bg-red-100 text-red-800'
+                            : 'bg-green-100 text-green-800'
+                        }`}>
+                          {request.signedPlansReceived || 'N/A'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2 text-sm text-gray-500">{request.submitTime}</td>
+                      <td className="px-4 py-2 text-sm text-gray-500">
+                        {request.issue ? (
+                          <div className="text-xs">
+                            <div className={`px-2 py-1 rounded text-white text-center ${
+                              request.issue.type === 'SAP Issue' ? 'bg-red-500' :
+                              request.issue.type === 'Invoice Issue' ? 'bg-orange-500' :
+                              request.issue.type === 'Dispatched Status Issue' ? 'bg-blue-500' : 'bg-gray-500'
+                            }`}>
+                              {request.issue.type}
+                            </div>
+                            <div className="text-gray-400 mt-1">{request.issue.timestamp}</div>
                           </div>
-                          <div className="text-gray-400 mt-1">{request.issue.timestamp}</div>
-                        </div>
-                      ) : (
-                        <select
-                          onChange={(e) => {
-                            if (e.target.value) {
-                              handleIssueUpdate(request.chassisNumber, e.target.value, request.id);
-                              e.target.value = '';
-                            }
-                          }}
-                          className="text-xs border border-gray-300 rounded px-1 py-1"
-                        >
-                          <option value="">Select Issue</option>
-                          <option value="SAP Issue">SAP Issue</option>
-                          <option value="Invoice Issue">Invoice Issue</option>
-                          <option value="Dispatched Status Issue">Dispatched Status Issue</option>
-                        </select>
-                      )}
-                    </td>
-                    <td className="px-4 py-2 text-sm text-gray-500">
-                      {request.status !== 'completed' && (
-                        <button
-                          onClick={() => handleMarkDone(request.chassisNumber, request.id)}
-                          className="bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded text-xs font-medium"
-                        >
-                          Done
-                        </button>
-                      )}
-                      {request.status === 'completed' && (
-                        <span className="text-green-600 text-xs font-medium">✓ Completed</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                        ) : (
+                          <select
+                            onChange={(e) => {
+                              if (e.target.value) {
+                                handleIssueUpdate(request.chassisNumber, e.target.value, request.id);
+                                e.target.value = '';
+                              }
+                            }}
+                            className="text-xs border border-gray-300 rounded px-1 py-1"
+                          >
+                            <option value="">Select Issue</option>
+                            <option value="SAP Issue">SAP Issue</option>
+                            <option value="Invoice Issue">Invoice Issue</option>
+                            <option value="Dispatched Status Issue">Dispatched Status Issue</option>
+                          </select>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-sm text-gray-500">
+                        {request.status !== 'completed' ? (
+                          <button
+                            onClick={() => handleMarkDone(request.chassisNumber, request.id)}
+                            className="bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded text-xs font-medium"
+                          >
+                            Done
+                          </button>
+                        ) : (
+                          <span className="text-green-600 text-xs font-medium">✓ Completed</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
