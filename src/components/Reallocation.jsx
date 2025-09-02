@@ -395,13 +395,20 @@ const Reallocation = ({ data }) => {
   };
 
   const chassisColorMap = {};
-  const getChassisColor = (chassis) => {
-    if (!chassis) return '';
+  const getChassisColor = (chassis, chassisCount) => {
+    if (!chassis) return 'white';
+    if (!chassisCount[chassis] || chassisCount[chassis] <= 1) return 'white';
+  
     if (!chassisColorMap[chassis]) {
-      // Generate a color (random pastel)
-      const hue = Math.floor(Math.random() * 360);
+      // Deterministic pastel color based on chassis string
+      let hash = 0;
+      for (let i = 0; i < chassis.length; i++) {
+        hash = chassis.charCodeAt(i) + ((hash << 5) - hash);
+      }
+      const hue = Math.abs(hash) % 360;
       chassisColorMap[chassis] = `hsl(${hue}, 70%, 90%)`;
     }
+  
     return chassisColorMap[chassis];
   };
 
