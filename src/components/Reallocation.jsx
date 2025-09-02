@@ -688,13 +688,13 @@ const Reallocation = ({ data }) => {
                     : 'white';
                   return (
                     <tr key={index} style={{ backgroundColor: rowBgColor }}>
-                      <td className="px-4 py-2 text-sm text-gray-1500">
+                      <td className="px-4 py-2 text-sm text-black font-bold">
                         {request.chassisNumber}
                       </td>
                       <td className="px-4 py-2 text-sm text-gray-500">
                         {request.originalDealer}
                       </td>
-                      <td className="px-4 py-2 text-sm text-gray-1500">
+                      <td className="px-4 py-2 text-sm text-black font-bold">
                         {request.reallocatedTo}
                       </td>
                       <td className="px-4 py-2 text-sm text-gray-500">
