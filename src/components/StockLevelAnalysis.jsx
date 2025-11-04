@@ -524,7 +524,7 @@ const StockLevelAnalysis = ({ data }) => {
                 <Tooltip
                   contentStyle={{
                     backgroundColor: '#f8fafc',
-                    border: '1px solid '#e2e8f0',
+                    border: '1px solid #e2e8f0',
                     borderRadius: '8px',
                     boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
                   }}
