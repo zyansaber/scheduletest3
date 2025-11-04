@@ -8,14 +8,14 @@ const StockLevelAnalysis = ({ data }) => {
   const [calendarData, setCalendarData] = useState({});
   const [loading, setLoading] = useState(true);
 
-  // =============== 月度生产计划（减法覆盖） ===============
-  // overrides 形如 { '2025-11': 120, '2025-12': 80 }
+  // =============== 月度生产计划（减法覆盖，按“每日”） ===============
+  // monthlyOverrides: { 'YYYY-MM': dailyUnits }
   const [useMonthlyOverrides, setUseMonthlyOverrides] = useState(true);
   const [monthlyOverrides, setMonthlyOverrides] = useState({});
 
   // =============== 25天后每周收货（加法） ===================
   const [weeklyOffsetDays, setWeeklyOffsetDays] = useState(25); // “从今天起25天后”
-  const [weeksCount, setWeeksCount] = useState(6);              // 默认规划6周
+  const [weeksCount, setWeeksCount] = useState(6);              // 你可手动加长
   // weeklyPlan: [{ startDate: 'YYYY-MM-DD', units: 10 }, ...]
   const [weeklyPlan, setWeeklyPlan] = useState([]);
 
@@ -33,13 +33,14 @@ const StockLevelAnalysis = ({ data }) => {
     loadCalendarData();
   }, []);
 
-  // Get today's date
+  // 今日（固定一次）
   const today = useMemo(() => new Date(), []);
-  // 图表显示“今天+1个月”
+  // 图表显示到“下一个 3 月底”
   const chartEndDate = useMemo(() => {
-    const end = new Date(today);
-    end.setMonth(end.getMonth() + 1);
-    return end;
+    const y = today.getFullYear();
+    const m = today.getMonth(); // 0-based
+    const targetYear = (m > 2) ? y + 1 : y;  // 如果已过3月，就取下一年
+    return new Date(targetYear, 2, 31);      // 3月=2（0-based）
   }, [today]);
 
   // ---------- 工具函数 ----------
@@ -60,17 +61,20 @@ const StockLevelAnalysis = ({ data }) => {
     return new Date(y, m - 1, d);
   };
 
-  // 仅保留今天及以后
+  // 仅保留今天及以后（baseline “日历减法”）
   const getFilteredCalendarData = () => {
     const filteredData = {};
-    const todayStr = ymd(today); // YYYY-MM-DD format
+    const todayStr = ymd(today);
     Object.entries(calendarData).forEach(([dateStr, quantity]) => {
-      if (dateStr >= todayStr) filteredData[dateStr] = quantity;
+      // 限制到 3 月底范围内
+      if (dateStr >= todayStr && new Date(dateStr) <= chartEndDate) {
+        filteredData[dateStr] = quantity;
+      }
     });
     return filteredData;
   };
 
-  // 汇总未来的“日历”按月
+  // 汇总未来“日历”按月（用于表格：Total Days, Calendar Total 等）
   const getMonthlyCalendarData = () => {
     const filteredCalendar = getFilteredCalendarData();
     const monthlyData = {};
@@ -85,8 +89,8 @@ const StockLevelAnalysis = ({ data }) => {
       if (!monthlyData[monthKey]) {
         monthlyData[monthKey] = { monthName, dateCount: 0, total: 0 };
       }
-      monthlyData[monthKey].dateCount += 1;
-      monthlyData[monthKey].total += quantity;
+      monthlyData[monthKey].dateCount += 1; // 有计划的天数（Total Days）
+      monthlyData[monthKey].total += quantity; // baseline 的当月总量
     });
     return monthlyData;
   };
@@ -108,7 +112,7 @@ const StockLevelAnalysis = ({ data }) => {
     });
   }, [weeklyOffsetDays, weeksCount, today]);
 
-  // 统计 Van Arrived
+  // 统计 Van Arrived（初始库存）
   const getVanArrivedCount = () => {
     if (!data) return 0;
     return data.filter(item =>
@@ -160,51 +164,28 @@ const StockLevelAnalysis = ({ data }) => {
       .sort((a, b) => a.date.localeCompare(b.date));
   };
 
-  // 将 override 的月度总量按日均匀分配（覆盖日历中对应月份）
+  // 将 override 的“每日值”覆盖 baseline 对应月份的“每日条目”
   const buildDailyReductionsWithOverrides = (baselineDaily) => {
     // baselineDaily: { 'YYYY-MM-DD': qty, ... }
     const result = { ...baselineDaily };
 
-    const monthsToApply = Object.entries(monthlyOverrides)
-      .filter(([_, v]) => useMonthlyOverrides && v !== '' && !Number.isNaN(Number(v)))
-      .map(([k, v]) => [k, Math.max(0, Number(v))]);
-
-    if (monthsToApply.length === 0) return result;
-
-    // 找到图表范围内所有日期
-    const datesInRange = [];
-    const cursor = new Date(today);
-    while (cursor <= chartEndDate) {
-      datesInRange.push(new Date(cursor));
-      cursor.setDate(cursor.getDate() + 1);
-    }
-
-    // 按月份聚合范围内的天
-    const byMonth = {};
-    datesInRange.forEach(d => {
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      if (!byMonth[key]) byMonth[key] = [];
-      byMonth[key].push(new Date(d));
+    // 预先把 baseline 的日期按月份分组，仅覆盖这些“有计划的天数”
+    const keysByMonth = {};
+    Object.keys(baselineDaily).forEach((dateStr) => {
+      const [year, month] = dateStr.split('-');
+      const monthKey = `${year}-${month}`;
+      if (!keysByMonth[monthKey]) keysByMonth[monthKey] = [];
+      keysByMonth[monthKey].push(dateStr);
     });
 
-    monthsToApply.forEach(([monthKey, total]) => {
-      const monthDays = byMonth[monthKey] || [];
-      if (monthDays.length === 0) return; // 超出图表范围
+    const monthsToApply = Object.entries(monthlyOverrides)
+      .filter(([_, v]) => useMonthlyOverrides && v !== '' && !Number.isNaN(Number(v)))
+      .map(([k, v]) => [k, Math.max(0, Number(v))]); // v = “每日”数量
 
-      // 均分该月
-      const n = monthDays.length;
-      const base = Math.floor(total / n);
-      let rem = total - base * n;
-
-      // 先清空该月 baselineDaily（避免与原日历重复）
-      monthDays.forEach(d => {
-        result[ymd(d)] = 0;
-      });
-
-      // 再按日填充
-      monthDays.forEach((d, idx) => {
-        const add = idx < rem ? 1 : 0;
-        result[ymd(d)] = base + add;
+    monthsToApply.forEach(([monthKey, daily]) => {
+      const days = keysByMonth[monthKey] || []; // 只在 baseline 有计划的天数里覆盖
+      days.forEach(dateStr => {
+        result[dateStr] = daily;
       });
     });
 
@@ -215,9 +196,9 @@ const StockLevelAnalysis = ({ data }) => {
   const getCombinedChartData = () => {
     if (!data) return [];
 
-    // baseline：来自日历（未来每天要减的量）
+    // baseline：来自日历（未来每天要减的量，限制到3月底）
     const filteredCalendar = getFilteredCalendarData(); // {'YYYY-MM-DD': qty}
-    // 可能被 overrides 覆盖对应月份
+    // 可能被 overrides（“每日”）覆盖对应月份
     const dailyReductions = buildDailyReductionsWithOverrides(filteredCalendar);
 
     // 预计到货（来自数据）
@@ -227,12 +208,14 @@ const StockLevelAnalysis = ({ data }) => {
         const dateObj = parseDDMMYYYY(item['Estimate Semi Received Date']);
         if (dateObj) {
           const k = ymd(dateObj);
-          estimateDates[k] = (estimateDates[k] || 0) + 1;
+          if (new Date(k) >= today && new Date(k) <= chartEndDate) {
+            estimateDates[k] = (estimateDates[k] || 0) + 1;
+          }
         }
       }
     });
 
-    // 每周计划加法（从 offset 开始每 7 天一次）
+    // 每周计划加法（从 offset 开始每 7 天一次；限制到3月底）
     const weeklyAdditions = {};
     weeklyPlan.forEach(w => {
       const d = new Date(w.startDate);
@@ -283,10 +266,13 @@ const StockLevelAnalysis = ({ data }) => {
 
   // ✅ 关键修复：该 hook 必须放在任何 return 之前（避免 React #310）
   useEffect(() => {
+    // 首次为“每日覆盖值”做预填：用 baseline 的月均日值（total / dateCount）
     if (!monthlyOverrides || Object.keys(monthlyOverrides).length === 0) {
       const prefill = {};
       Object.entries(monthlyCalendarData).forEach(([k, v]) => {
-        prefill[k] = v.total;
+        const dailyAvg = v.dateCount ? (v.total / v.dateCount) : 0;
+        // 取整更直观；如需保留小数可改成 Number(dailyAvg.toFixed(1))
+        prefill[k] = Math.round(dailyAvg);
       });
       setMonthlyOverrides(prefill);
     }
@@ -306,7 +292,7 @@ const StockLevelAnalysis = ({ data }) => {
     <div className="p-6 space-y-8">
       <h1 className="text-2xl font-bold text-gray-900 mb-6">Stock Level Analysis</h1>
 
-      {/* ========== 月度生产计划（减法覆盖） ========== */}
+      {/* ========== 月度生产计划（减法覆盖，按每日） ========== */}
       <div className="bg-white rounded-lg shadow-md p-6 space-y-4">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <h2 className="text-xl font-semibold text-gray-800">Monthly Production Plan (Subtract)</h2>
@@ -317,47 +303,60 @@ const StockLevelAnalysis = ({ data }) => {
               checked={useMonthlyOverrides}
               onChange={(e) => setUseMonthlyOverrides(e.target.checked)}
             />
-            <span>Apply overrides (replace calendar totals by month)</span>
+            <span>Apply overrides (use daily value to replace calendar days)</span>
           </label>
         </div>
 
         {Object.keys(monthlyCalendarData).length === 0 ? (
-          <div className="text-gray-500">No future calendar data to override.</div>
+          <div className="text-gray-500">No future calendar data (within chart range) to override.</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full border-collapse border border-gray-200 text-sm">
               <thead>
                 <tr className="bg-gray-50">
                   <th className="border border-gray-200 px-3 py-2 text-left">Month</th>
+                  <th className="border border-gray-200 px-3 py-2 text-left">Total Days</th>
                   <th className="border border-gray-200 px-3 py-2 text-left">Calendar Total</th>
+                  <th className="border border-gray-200 px-3 py-2 text-left">Override Daily</th>
                   <th className="border border-gray-200 px-3 py-2 text-left">Override Total</th>
                 </tr>
               </thead>
               <tbody>
                 {Object.entries(monthlyCalendarData)
                   .sort(([a], [b]) => a.localeCompare(b))
-                  .map(([monthKey, monthData]) => (
-                    <tr key={monthKey} className="hover:bg-gray-50">
-                      <td className="border border-gray-200 px-3 py-2 font-medium">{monthData.monthName}</td>
-                      <td className="border border-gray-200 px-3 py-2">{monthData.total}</td>
-                      <td className="border border-gray-200 px-3 py-2">
-                        <input
-                          type="number"
-                          className="w-32 border rounded px-2 py-1"
-                          value={monthlyOverrides[monthKey] ?? ''}
-                          onChange={(e) =>
-                            setMonthlyOverrides((prev) => ({ ...prev, [monthKey]: e.target.value }))
-                          }
-                          min="0"
-                          step="1"
-                        />
-                      </td>
-                    </tr>
-                  ))}
+                  .map(([monthKey, monthData]) => {
+                    const dailyVal = Number(monthlyOverrides[monthKey] ?? 0);
+                    const totalOverride = Math.max(0, Math.round(dailyVal * monthData.dateCount));
+                    return (
+                      <tr key={monthKey} className="hover:bg-gray-50">
+                        <td className="border border-gray-200 px-3 py-2 font-medium">{monthData.monthName}</td>
+                        <td className="border border-gray-200 px-3 py-2">{monthData.dateCount}</td>
+                        <td className="border border-gray-200 px-3 py-2">{monthData.total}</td>
+                        <td className="border border-gray-200 px-3 py-2">
+                          <input
+                            type="number"
+                            className="w-28 border rounded px-2 py-1"
+                            value={monthlyOverrides[monthKey] ?? ''}
+                            onChange={(e) =>
+                              setMonthlyOverrides((prev) => ({ ...prev, [monthKey]: e.target.value }))
+                            }
+                            min="0"
+                            step="1"
+                          />
+                        </td>
+                        <td className="border border-gray-200 px-3 py-2">
+                          <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded">
+                            {totalOverride}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
               </tbody>
             </table>
             <div className="mt-3 text-xs text-gray-500">
-              Notes: overrides are evenly distributed by day within that month (limited to the chart range).
+              Notes: “Override Daily” 只覆盖该月**日历里有计划的天数**（Total Days），
+              “Override Total = Daily × Total Days”。未在日历中的日期不做处理。
             </div>
           </div>
         )}
@@ -431,46 +430,9 @@ const StockLevelAnalysis = ({ data }) => {
         )}
       </div>
 
-      {/* 月度聚合卡片 */}
+      {/* 趋势图（时间范围：直到下一个3月末） */}
       <div className="bg-white rounded-lg shadow-md p-6">
-        <h2 className="text-xl font-semibold text-gray-800 mb-4">Calendar Data (From Today Onwards)</h2>
-        {Object.keys(monthlyCalendarData).length === 0 ? (
-          <div className="text-center text-gray-500 py-8">No calendar data available for future dates</div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {Object.entries(monthlyCalendarData)
-              .sort(([a], [b]) => a.localeCompare(b))
-              .map(([monthKey, monthData]) => (
-                <div key={monthKey} className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-lg p-6 text-center">
-                  <h3 className="text-lg font-semibold text-blue-800 mb-4">{monthData.monthName}</h3>
-                  <div className="space-y-3">
-                    <div className="bg-white rounded-lg p-3">
-                      <div className="text-sm text-gray-600">Monthly Total</div>
-                      <div className="text-2xl font-bold text-blue-600">{monthData.total}</div>
-                      <div className="text-xs text-gray-500">units</div>
-                    </div>
-                    <div className="bg-white rounded-lg p-3">
-                      <div className="text-sm text-gray-600">Daily Average</div>
-                      <div className="text-xl font-bold text-green-600">
-                        {(monthData.total / Math.max(1, monthData.dateCount)).toFixed(1)}
-                      </div>
-                      <div className="text-xs text-gray-500">units per day</div>
-                    </div>
-                    <div className="bg-white rounded-lg p-3">
-                      <div className="text-sm text-gray-600">Total Days</div>
-                      <div className="text-lg font-bold text-purple-600">{monthData.dateCount}</div>
-                      <div className="text-xs text-gray-500">delivery days</div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-          </div>
-        )}
-      </div>
-
-      {/* 趋势图 */}
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <h2 className="text-xl font-semibold text-gray-800 mb-4">Semi Van Stock Trend (Next ~30 Days)</h2>
+        <h2 className="text-xl font-semibold text-gray-800 mb-4">Semi Van Stock Trend (Through End of March)</h2>
         <div className="mb-4 text-sm text-gray-600 space-y-1">
           <div>Starting stock (Van Arrived): <span className="font-semibold text-blue-600">{getVanArrivedCount()}</span> units</div>
           <div>
@@ -484,13 +446,9 @@ const StockLevelAnalysis = ({ data }) => {
         {combinedChartData.length === 0 ? (
           <div className="text-center text-gray-500 py-8">No trend data available</div>
         ) : (
-          <div className="h-96">
+          <div className="h-[440px]">
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart
-                data={combinedChartData.filter((_, index) =>
-                  index % Math.max(1, Math.floor(combinedChartData.length / 30)) === 0
-                )}
-              >
+              <ComposedChart data={combinedChartData}>
                 <defs>
                   <linearGradient id="stockGradient" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
@@ -542,7 +500,7 @@ const StockLevelAnalysis = ({ data }) => {
                   name="Expected Arrivals"
                   radius={[2, 2, 0, 0]}
                 />
-                {/* 新增：每周计划收货 */}
+                {/* 每周计划收货 */}
                 <Bar
                   yAxisId="arrivals"
                   dataKey="weeklyPlannedArrivals"
@@ -563,7 +521,7 @@ const StockLevelAnalysis = ({ data }) => {
                     fill: '#3b82f6',
                     strokeWidth: 2,
                     stroke: '#ffffff',
-                    r: 4
+                    r: 3.5
                   }}
                   activeDot={{ r: 6, fill: '#1d4ed8', stroke: '#ffffff', strokeWidth: 2 }}
                 />
@@ -608,7 +566,7 @@ const StockLevelAnalysis = ({ data }) => {
                 (data || []).forEach(item => {
                   const estimateDate = item['Estimate Semi Received Date'];
                   const d = parseDDMMYYYY(estimateDate);
-                  if (d) {
+                  if (d && d >= today && d <= chartEndDate) {
                     const key = ymd(d);
                     dateStats[key] = dateStats[key] || { count: 0, originalDate: estimateDate };
                     dateStats[key].count += 1;
@@ -620,7 +578,7 @@ const StockLevelAnalysis = ({ data }) => {
                   return (
                     <tr>
                       <td colSpan="2" className="border border-gray-300 px-4 py-8 text-center text-gray-500">
-                        No estimated arrival dates found
+                        No estimated arrival dates found (within chart range)
                       </td>
                     </tr>
                   );
