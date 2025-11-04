@@ -8,12 +8,12 @@ const StockLevelAnalysis = ({ data }) => {
   const [calendarData, setCalendarData] = useState({});
   const [loading, setLoading] = useState(true);
 
-  // =============== 新增：月度生产计划（减法覆盖） ===============
+  // =============== 月度生产计划（减法覆盖） ===============
   // overrides 形如 { '2025-11': 120, '2025-12': 80 }
   const [useMonthlyOverrides, setUseMonthlyOverrides] = useState(true);
   const [monthlyOverrides, setMonthlyOverrides] = useState({});
 
-  // =============== 新增：25天后每周收货（加法） ===================
+  // =============== 25天后每周收货（加法） ===================
   const [weeklyOffsetDays, setWeeklyOffsetDays] = useState(25); // “从今天起25天后”
   const [weeksCount, setWeeksCount] = useState(6);              // 默认规划6周
   // weeklyPlan: [{ startDate: 'YYYY-MM-DD', units: 10 }, ...]
@@ -60,12 +60,7 @@ const StockLevelAnalysis = ({ data }) => {
     return new Date(y, m - 1, d);
   };
 
-  const getDaysInMonth = (year, monthIndex0) => {
-    // monthIndex0: 0-11
-    return new Date(year, monthIndex0 + 1, 0).getDate();
-  };
-
-  // Filter calendar data to only show dates from today onwards
+  // 仅保留今天及以后
   const getFilteredCalendarData = () => {
     const filteredData = {};
     const todayStr = ymd(today); // YYYY-MM-DD format
@@ -75,7 +70,7 @@ const StockLevelAnalysis = ({ data }) => {
     return filteredData;
   };
 
-  // Group calendar dates by month and calculate monthly totals
+  // 汇总未来的“日历”按月
   const getMonthlyCalendarData = () => {
     const filteredCalendar = getFilteredCalendarData();
     const monthlyData = {};
@@ -96,7 +91,7 @@ const StockLevelAnalysis = ({ data }) => {
     return monthlyData;
   };
 
-  // 初始化周计划（当偏移或周数改变时重建；保留已输入数值尽量不丢）
+  // 初始化/重建 “每周收货计划”
   useEffect(() => {
     const base = new Date(today);
     base.setDate(base.getDate() + Number(weeklyOffsetDays || 0));
@@ -113,7 +108,7 @@ const StockLevelAnalysis = ({ data }) => {
     });
   }, [weeklyOffsetDays, weeksCount, today]);
 
-  // Calculate van arrived count (Production Stages = "Van Arrived")
+  // 统计 Van Arrived
   const getVanArrivedCount = () => {
     if (!data) return 0;
     return data.filter(item =>
@@ -122,7 +117,7 @@ const StockLevelAnalysis = ({ data }) => {
     ).length;
   };
 
-  // Get Van on the sea status model ranges count
+  // Sea 状态卡片
   const getVanOnSeaData = () => {
     if (!data) return [];
     const vanOnSeaItems = data.filter(item =>
@@ -142,7 +137,7 @@ const StockLevelAnalysis = ({ data }) => {
     return Object.entries(modelRanges).map(([range, count]) => ({ modelRange: range, count }));
   };
 
-  // Get estimate semi received dates grouped by date
+  // 预计收货（来自数据的 Estimate Semi Received Date） → 表格
   const getEstimateDateData = () => {
     if (!data) return [];
     const estimateDates = {};
@@ -165,12 +160,11 @@ const StockLevelAnalysis = ({ data }) => {
       .sort((a, b) => a.date.localeCompare(b.date));
   };
 
-  // ============ 将 override 的月度总量按日均匀分配 ============
+  // 将 override 的月度总量按日均匀分配（覆盖日历中对应月份）
   const buildDailyReductionsWithOverrides = (baselineDaily) => {
     // baselineDaily: { 'YYYY-MM-DD': qty, ... }
     const result = { ...baselineDaily };
 
-    // 将 overrides (每月)分摊到对应月份每一天（仅限图表范围内）
     const monthsToApply = Object.entries(monthlyOverrides)
       .filter(([_, v]) => useMonthlyOverrides && v !== '' && !Number.isNaN(Number(v)))
       .map(([k, v]) => [k, Math.max(0, Number(v))]);
@@ -197,16 +191,17 @@ const StockLevelAnalysis = ({ data }) => {
       const monthDays = byMonth[monthKey] || [];
       if (monthDays.length === 0) return; // 超出图表范围
 
-      // 均分到该月内的天数（确保总和=total）
+      // 均分该月
       const n = monthDays.length;
       const base = Math.floor(total / n);
       let rem = total - base * n;
 
-      // 先清空该月的 baselineDaily（避免和原日历重复）
+      // 先清空该月 baselineDaily（避免与原日历重复）
       monthDays.forEach(d => {
         result[ymd(d)] = 0;
       });
 
+      // 再按日填充
       monthDays.forEach((d, idx) => {
         const add = idx < rem ? 1 : 0;
         result[ymd(d)] = base + add;
@@ -216,16 +211,16 @@ const StockLevelAnalysis = ({ data }) => {
     return result;
   };
 
-  // 生成图表数据（把：日历减法 / 月度覆盖减法 / 预计到货加法 / 每周计划加法 组合起来）
+  // ==== 组合图表数据（减法：日历/月度覆盖；加法：预计收货/每周计划） ====
   const getCombinedChartData = () => {
     if (!data) return [];
 
-    // baseline：来自日历（未来的每天要减的量）
+    // baseline：来自日历（未来每天要减的量）
     const filteredCalendar = getFilteredCalendarData(); // {'YYYY-MM-DD': qty}
     // 可能被 overrides 覆盖对应月份
     const dailyReductions = buildDailyReductionsWithOverrides(filteredCalendar);
 
-    // 预计到货（来自数据的 Estimate Semi Received Date）
+    // 预计到货（来自数据）
     const estimateDates = {};
     data.forEach(item => {
       if (item['Estimate Semi Received Date']) {
@@ -237,11 +232,10 @@ const StockLevelAnalysis = ({ data }) => {
       }
     });
 
-    // 每周计划加法（从 offset 开始的每 7 天一次）
+    // 每周计划加法（从 offset 开始每 7 天一次）
     const weeklyAdditions = {};
     weeklyPlan.forEach(w => {
       const d = new Date(w.startDate);
-      // 仅考虑在图表范围内的
       if (d >= today && d <= chartEndDate) weeklyAdditions[ymd(d)] = Math.max(0, Number(w.units) || 0);
     });
 
@@ -281,23 +275,14 @@ const StockLevelAnalysis = ({ data }) => {
     return chartData;
   };
 
+  // ---- memo 计算 ----
   const monthlyCalendarData = useMemo(() => getMonthlyCalendarData(), [calendarData]);
-  const combinedChartData = useMemo(() => getCombinedChartData(), [calendarData, monthlyOverrides, useMonthlyOverrides, weeklyPlan, data]);
-  const vanOnSeaData = useMemo(() => getVanOnSeaData(), [data]);
-  const estimateDateTable = useMemo(() => getEstimateDateData(), [data]);
+  const combinedChartData   = useMemo(() => getCombinedChartData(), [calendarData, monthlyOverrides, useMonthlyOverrides, weeklyPlan, data]);
+  const vanOnSeaData        = useMemo(() => getVanOnSeaData(), [data]);
+  const estimateDateTable   = useMemo(() => getEstimateDateData(), [data]);
 
-  // ========= UI 渲染 =========
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-lg text-gray-600">Loading stock level analysis...</div>
-      </div>
-    );
-  }
-
-  // 为月度覆盖初始化默认显示值（首次渲染时带出基线总量）
+  // ✅ 关键修复：该 hook 必须放在任何 return 之前（避免 React #310）
   useEffect(() => {
-    // 仅当还没手填过时，预填当月基线总量
     if (!monthlyOverrides || Object.keys(monthlyOverrides).length === 0) {
       const prefill = {};
       Object.entries(monthlyCalendarData).forEach(([k, v]) => {
@@ -308,11 +293,20 @@ const StockLevelAnalysis = ({ data }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [monthlyCalendarData]);
 
+  // ---- Loading ----
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-lg text-gray-600">Loading stock level analysis...</div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 space-y-8">
       <h1 className="text-2xl font-bold text-gray-900 mb-6">Stock Level Analysis</h1>
 
-      {/* ========== 新增控制面板：月度生产计划（减法覆盖） ========== */}
+      {/* ========== 月度生产计划（减法覆盖） ========== */}
       <div className="bg-white rounded-lg shadow-md p-6 space-y-4">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <h2 className="text-xl font-semibold text-gray-800">Monthly Production Plan (Subtract)</h2>
@@ -369,7 +363,7 @@ const StockLevelAnalysis = ({ data }) => {
         )}
       </div>
 
-      {/* ========== 新增控制面板：25天后每周收货（加法） ========== */}
+      {/* ========== 25天后每周收货（加法） ========== */}
       <div className="bg-white rounded-lg shadow-md p-6 space-y-4">
         <h2 className="text-xl font-semibold text-gray-800">Planned Weekly Receipts (Add after 25 days)</h2>
         <div className="flex items-center gap-4 flex-wrap">
@@ -437,7 +431,7 @@ const StockLevelAnalysis = ({ data }) => {
         )}
       </div>
 
-      {/* Monthly Calendar Data - showing each day and monthly totals */}
+      {/* 月度聚合卡片 */}
       <div className="bg-white rounded-lg shadow-md p-6">
         <h2 className="text-xl font-semibold text-gray-800 mb-4">Calendar Data (From Today Onwards)</h2>
         {Object.keys(monthlyCalendarData).length === 0 ? (
@@ -457,7 +451,9 @@ const StockLevelAnalysis = ({ data }) => {
                     </div>
                     <div className="bg-white rounded-lg p-3">
                       <div className="text-sm text-gray-600">Daily Average</div>
-                      <div className="text-xl font-bold text-green-600">{(monthData.total / monthData.dateCount).toFixed(1)}</div>
+                      <div className="text-xl font-bold text-green-600">
+                        {(monthData.total / Math.max(1, monthData.dateCount)).toFixed(1)}
+                      </div>
                       <div className="text-xs text-gray-500">units per day</div>
                     </div>
                     <div className="bg-white rounded-lg p-3">
@@ -472,9 +468,9 @@ const StockLevelAnalysis = ({ data }) => {
         )}
       </div>
 
-      {/* Trend Chart */}
+      {/* 趋势图 */}
       <div className="bg-white rounded-lg shadow-md p-6">
-        <h2 className="text-xl font-semibold text-gray-800 mb-4">Semi Van Stock Trend (Next 30 Days)</h2>
+        <h2 className="text-xl font-semibold text-gray-800 mb-4">Semi Van Stock Trend (Next ~30 Days)</h2>
         <div className="mb-4 text-sm text-gray-600 space-y-1">
           <div>Starting stock (Van Arrived): <span className="font-semibold text-blue-600">{getVanArrivedCount()}</span> units</div>
           <div>
@@ -577,7 +573,7 @@ const StockLevelAnalysis = ({ data }) => {
         )}
       </div>
 
-      {/* Van on the Sea Status Cards */}
+      {/* Sea 状态卡片 */}
       <div className="bg-white rounded-lg shadow-md p-6">
         <h2 className="text-xl font-semibold text-gray-800 mb-4">Van on the Sea Status - Model Ranges</h2>
         {vanOnSeaData.length > 0 ? (
@@ -616,7 +612,6 @@ const StockLevelAnalysis = ({ data }) => {
                     const key = ymd(d);
                     dateStats[key] = dateStats[key] || { count: 0, originalDate: estimateDate };
                     dateStats[key].count += 1;
-                    // 保留第一条原始格式展示
                   }
                 });
 
