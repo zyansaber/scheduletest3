@@ -262,8 +262,11 @@ const StockLevelAnalysis = ({ data }) => {
       chartData.push({
         date: key,
         displayDate: cursor.toLocaleDateString('en-US', {
-          month: 'short', day: 'numeric',
-          year: cursor.getFullYear()
+          month: 'short',
+          day: 'numeric',
+          year: (chartStartDate.getFullYear() !== chartEndDate.getFullYear())
+            ? 'numeric'
+            : undefined, // ✅ 合法：不显示 year
         }),
         semivanstock: currentStock,
         estimateArrivals: estArrive,
