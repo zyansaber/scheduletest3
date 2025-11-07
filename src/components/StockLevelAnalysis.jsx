@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
@@ -30,6 +30,12 @@ const StockLevelAnalysis = ({ data }) => {
     if (!y || !m || !d) return null;
     return new Date(y, m - 1, d);
   };
+  const addDays = (dateObj, days) => {
+    if (!dateObj) return null;
+    const result = new Date(dateObj);
+    result.setDate(result.getDate() + Number(days || 0));
+    return result;
+  };
   const parseDDMMYYYY = (ddmmyyyy) => {
     const parts = String(ddmmyyyy || '').split('/');
     if (parts.length !== 3) return null;
@@ -60,8 +66,20 @@ const StockLevelAnalysis = ({ data }) => {
   // 现在的偏移相对 chartStartDate（更直观）
   const [weeklyOffsetDays, setWeeklyOffsetDays] = useState(25);
   const [weeksCount, setWeeksCount] = useState(6);
-  // weeklyPlan: [{ startDate: 'YYYY-MM-DD', units: 10 }, ...]
+  // weeklyPlan: [{ id, plannedDate: 'YYYY-MM-DD', units: 10, isCustomDate: boolean }, ...]
   const [weeklyPlan, setWeeklyPlan] = useState([]);
+  const weeklyIdCounter = useRef(0);
+
+  const getDefaultWeeklyDate = (index) => {
+    const base = new Date(chartStartDate);
+    base.setDate(base.getDate() + index * 7);
+    return ymd(base);
+  };
+
+  const [customLineStartDate, setCustomLineStartDate] = useState('');
+  const [customLineStartValue, setCustomLineStartValue] = useState('');
+  const [customLineEndDate, setCustomLineEndDate] = useState('');
+  const [customLineEndValue, setCustomLineEndValue] = useState('');
 
   useEffect(() => {
     const loadCalendarData = async () => {
@@ -111,22 +129,25 @@ const StockLevelAnalysis = ({ data }) => {
     return monthlyData;
   };
 
-  // 初始化/重建 “每周收货计划”（起点=图表起始日+offset），限定在图表范围内渲染
+  // 初始化/重建 “每周收货计划”（默认日期=图表起始日，每行+7天，可自定义），限定在图表范围内渲染
   useEffect(() => {
-    const base = new Date(chartStartDate);
-    base.setDate(base.getDate() + Number(weeklyOffsetDays || 0));
-    const newPlan = [];
-    for (let i = 0; i < Math.max(0, Number(weeksCount || 0)); i++) {
-      const d = new Date(base);
-      d.setDate(base.getDate() + i * 7);
-      newPlan.push({ startDate: ymd(d), units: 0 });
-    }
-    // 尽量合并旧值
     setWeeklyPlan((prev) => {
-      const map = new Map(prev.map(p => [p.startDate, p.units]));
-      return newPlan.map(p => ({ ...p, units: map.has(p.startDate) ? map.get(p.startDate) : 0 }));
+      const next = [];
+      const count = Math.max(0, Number(weeksCount || 0));
+      for (let i = 0; i < count; i++) {
+        const defaultDate = getDefaultWeeklyDate(i);
+        const existing = prev[i];
+        const isCustom = existing?.isCustomDate ?? false;
+        next.push({
+          id: existing?.id ?? `week-${weeklyIdCounter.current++}`,
+          plannedDate: isCustom ? (existing?.plannedDate ?? defaultDate) : defaultDate,
+          units: existing?.units ?? 0,
+          isCustomDate: isCustom,
+        });
+      }
+      return next;
     });
-  }, [weeklyOffsetDays, weeksCount, chartStartDate]);
+  }, [weeksCount, chartStartDate]);
 
   // 统计 Van Arrived（初始库存）
   const getVanArrivedCount = () => {
@@ -233,12 +254,57 @@ const StockLevelAnalysis = ({ data }) => {
 
     // 每周计划加法（限定在图表范围）
     const weeklyAdditions = {};
-    weeklyPlan.forEach(w => {
-      const d = parseYYYYMMDD(w.startDate);
-      if (d && d >= chartStartDate && d <= chartEndDate) {
-        weeklyAdditions[ymd(d)] = Math.max(0, Number(w.units) || 0);
+    weeklyPlan.forEach((w, index) => {
+      const baseDate = parseYYYYMMDD(w?.plannedDate);
+      const defaultDate = getDefaultWeeklyDate(index);
+      const resolvedBase = baseDate || (w?.isCustomDate ? null : parseYYYYMMDD(defaultDate));
+      const shifted = addDays(resolvedBase, weeklyOffsetDays);
+      if (shifted && shifted >= chartStartDate && shifted <= chartEndDate) {
+        const key = ymd(shifted);
+        const units = Math.max(0, Number(w.units) || 0);
+        weeklyAdditions[key] = (weeklyAdditions[key] || 0) + units;
       }
     });
+
+    const applyCustomLine = (chartRows) => {
+      if (!customLineStartDate || customLineStartValue === '') {
+        return chartRows;
+      }
+
+      const startDateObj = parseYYYYMMDD(customLineStartDate);
+      const startValueNum = Number(customLineStartValue);
+      if (!startDateObj || Number.isNaN(startValueNum)) {
+        return chartRows;
+      }
+
+      const fallbackEndDateObj = chartEndDate;
+      const endDateObjRaw = parseYYYYMMDD(customLineEndDate);
+      const endDateObj = (endDateObjRaw && endDateObjRaw >= startDateObj) ? endDateObjRaw : fallbackEndDateObj;
+
+      const endValueProvided = customLineEndValue !== '' && !Number.isNaN(Number(customLineEndValue));
+      const endValueNum = endValueProvided ? Number(customLineEndValue) : startValueNum;
+
+      if (!endDateObj || endDateObj < startDateObj) {
+        return chartRows;
+      }
+
+      const dayMs = 24 * 60 * 60 * 1000;
+      const totalDays = Math.max(0, Math.round((endDateObj - startDateObj) / dayMs));
+
+      return chartRows.map((row) => {
+        const rowDate = parseYYYYMMDD(row.date);
+        if (!rowDate || rowDate < startDateObj || rowDate > endDateObj) {
+          return { ...row, customLineValue: null };
+        }
+
+        const diffDays = Math.round((rowDate - startDateObj) / dayMs);
+        const value = totalDays === 0
+          ? startValueNum
+          : startValueNum + ((endValueNum - startValueNum) * (diffDays / totalDays));
+
+        return { ...row, customLineValue: value };
+      });
+    };
 
     // 逐日推进
     const chartData = [];
@@ -276,12 +342,28 @@ const StockLevelAnalysis = ({ data }) => {
       cursor.setDate(cursor.getDate() + 1);
     }
 
-    return chartData;
+    return applyCustomLine(chartData);
   };
 
   // ---- memo 计算 ----
   const monthlyCalendarData = useMemo(() => getMonthlyCalendarData(), [calendarData, chartStartDate, chartEndDate]);
-  const combinedChartData   = useMemo(() => getCombinedChartData(), [calendarData, monthlyOverrides, useMonthlyOverrides, weeklyPlan, data, chartStartDate, chartEndDate]);
+  const combinedChartData   = useMemo(
+    () => getCombinedChartData(),
+    [
+      calendarData,
+      monthlyOverrides,
+      useMonthlyOverrides,
+      weeklyPlan,
+      data,
+      chartStartDate,
+      chartEndDate,
+      weeklyOffsetDays,
+      customLineStartDate,
+      customLineStartValue,
+      customLineEndDate,
+      customLineEndValue,
+    ],
+  );
   const vanOnSeaData        = useMemo(() => getVanOnSeaData(), [data]);
   const estimateDateTable   = useMemo(() => getEstimateDateData(), [data, chartStartDate, chartEndDate]);
 
@@ -404,7 +486,7 @@ const StockLevelAnalysis = ({ data }) => {
               </tbody>
             </table>
             <div className="mt-3 text-xs text-gray-500">
-              Notes: “Override Daily” 只覆盖该月**日历里有计划的天数**（Total Days）；“Override Total = Daily × Total Days”。
+              Notes: “Override Daily” 只覆盖该月<strong>日历里有计划的天数</strong>（Total Days）；“Override Total = Daily × Total Days”。
             </div>
           </div>
         )}
@@ -443,39 +525,155 @@ const StockLevelAnalysis = ({ data }) => {
             <table className="w-full border-collapse border border-gray-200 text-sm">
               <thead>
                 <tr className="bg-gray-50">
-                  <th className="border border-gray-200 px-3 py-2 text-left">Week Start</th>
+                  <th className="border border-gray-200 px-3 py-2 text-left">Week #</th>
+                  <th className="border border-gray-200 px-3 py-2 text-left">Planned Date</th>
                   <th className="border border-gray-200 px-3 py-2 text-left">Units</th>
+                  <th className="border border-gray-200 px-3 py-2 text-left">Use Custom Date?</th>
+                  <th className="border border-gray-200 px-3 py-2 text-left">Effective Arrival Date</th>
                 </tr>
               </thead>
               <tbody>
-                {weeklyPlan.map((w, idx) => (
-                  <tr key={w.startDate} className="hover:bg-gray-50">
-                    <td className="border border-gray-200 px-3 py-2 font-mono">{w.startDate}</td>
-                    <td className="border border-gray-200 px-3 py-2">
-                      <input
-                        type="number"
-                        className="w-28 border rounded px-2 py-1"
-                        value={w.units}
-                        min="0"
-                        onChange={(e) => {
-                          const val = Math.max(0, Number(e.target.value));
-                          setWeeklyPlan((prev) => {
-                            const copy = [...prev];
-                            copy[idx] = { ...copy[idx], units: val };
-                            return copy;
-                          });
-                        }}
-                      />
-                    </td>
-                  </tr>
-                ))}
+                {weeklyPlan.map((week, index) => {
+                  const resolvedBase = week.isCustomDate
+                    ? parseYYYYMMDD(week.plannedDate)
+                    : parseYYYYMMDD(getDefaultWeeklyDate(index));
+                  const arrivalDate = addDays(resolvedBase, weeklyOffsetDays);
+                  const arrivalInRange = arrivalDate &&
+                    arrivalDate >= chartStartDate &&
+                    arrivalDate <= chartEndDate;
+                  const effectiveDate = arrivalInRange
+                    ? ymd(arrivalDate)
+                    : arrivalDate
+                      ? `${ymd(arrivalDate)} (out of range)`
+                      : '—';
+
+                  return (
+                    <tr key={week.id} className="hover:bg-gray-50">
+                      <td className="border border-gray-200 px-3 py-2">{index + 1}</td>
+                      <td className="border border-gray-200 px-3 py-2">
+                        <div className="flex flex-col gap-1">
+                          <input
+                            type="date"
+                            className="border rounded px-2 py-1"
+                            value={week.plannedDate}
+                            onChange={(e) => {
+                              const nextValue = e.target.value;
+                              setWeeklyPlan((prev) =>
+                                prev.map((item, idx) =>
+                                  idx === index
+                                    ? { ...item, plannedDate: nextValue, isCustomDate: true }
+                                    : item
+                                )
+                              );
+                            }}
+                            disabled={!week.isCustomDate}
+                          />
+                          {!week.isCustomDate && (
+                            <span className="text-xs text-gray-500">
+                              Default: {getDefaultWeeklyDate(index)}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="border border-gray-200 px-3 py-2">
+                        <input
+                          type="number"
+                          className="w-24 border rounded px-2 py-1"
+                          min="0"
+                          value={week.units}
+                          onChange={(e) => {
+                            const units = Number(e.target.value);
+                            setWeeklyPlan((prev) =>
+                              prev.map((item, idx) =>
+                                idx === index ? { ...item, units: Number.isNaN(units) ? 0 : units } : item
+                              )
+                            );
+                          }}
+                        />
+                      </td>
+                      <td className="border border-gray-200 px-3 py-2">
+                        <label className="inline-flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            className="w-4 h-4"
+                            checked={week.isCustomDate}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              setWeeklyPlan((prev) =>
+                                prev.map((item, idx) =>
+                                  idx === index
+                                    ? {
+                                        ...item,
+                                        isCustomDate: checked,
+                                        plannedDate: checked ? week.plannedDate : getDefaultWeeklyDate(index),
+                                      }
+                                    : item
+                                )
+                              );
+                            }}
+                          />
+                          <span>Use custom planned date</span>
+                        </label>
+                      </td>
+                      <td className="border border-gray-200 px-3 py-2">
+                        <span className="font-mono text-sm">
+                          {effectiveDate}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
-            <div className="mt-3 text-xs text-gray-500">
-              Notes: weekly units are added on the listed start date (once per week), only within the selected chart range.
-            </div>
           </div>
         )}
+      </div>
+
+      {/* ========== 自定义趋势线 ========== */}
+      <div className="bg-white rounded-lg shadow-md p-6 space-y-4">
+        <h2 className="text-xl font-semibold text-gray-800">Custom Trend Line</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <label className="text-sm space-y-1">
+            <span>Start Date</span>
+            <input
+              type="date"
+              className="border rounded px-2 py-1"
+              value={customLineStartDate}
+              onChange={(e) => setCustomLineStartDate(e.target.value)}
+            />
+          </label>
+          <label className="text-sm space-y-1">
+            <span>Start Value</span>
+            <input
+              type="number"
+              className="border rounded px-2 py-1"
+              value={customLineStartValue}
+              onChange={(e) => setCustomLineStartValue(e.target.value)}
+            />
+          </label>
+          <label className="text-sm space-y-1">
+            <span>End Date (optional)</span>
+            <input
+              type="date"
+              className="border rounded px-2 py-1"
+              value={customLineEndDate}
+              onChange={(e) => setCustomLineEndDate(e.target.value)}
+              min={customLineStartDate || undefined}
+            />
+          </label>
+          <label className="text-sm space-y-1">
+            <span>End Value (optional)</span>
+            <input
+              type="number"
+              className="border rounded px-2 py-1"
+              value={customLineEndValue}
+              onChange={(e) => setCustomLineEndValue(e.target.value)}
+            />
+          </label>
+        </div>
+        <div className="text-xs text-gray-500">
+          If end point values are left blank, the line will extend to the end of the chart using the start value.
+        </div>
       </div>
 
       {/* 趋势图（横坐标=可配置日期范围） */}
@@ -532,10 +730,15 @@ const StockLevelAnalysis = ({ data }) => {
                     boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
                   }}
                   labelFormatter={(value) => `Date: ${value}`}
-                  formatter={(value, name) => [
-                    `${value} ${name.includes('Stock') ? 'units' : 'arrivals'}`,
-                    name
-                  ]}
+                  formatter={(value, name, entry) => {
+                    const arrivalsKeys = ['estimateArrivals', 'weeklyPlannedArrivals'];
+                    const dataKey = entry?.dataKey;
+                    const unitLabel = arrivalsKeys.includes(dataKey) ? 'arrivals' : 'units';
+                    return [
+                      `${value} ${unitLabel}`,
+                      name
+                    ];
+                  }}
                 />
                 <Legend wrapperStyle={{ paddingTop: '20px' }} />
 
@@ -573,6 +776,19 @@ const StockLevelAnalysis = ({ data }) => {
                   }}
                   activeDot={{ r: 6, fill: '#1d4ed8', stroke: '#ffffff', strokeWidth: 2 }}
                 />
+                {customLineStartDate && customLineStartValue !== '' && (
+                  <Line
+                    yAxisId="stock"
+                    type="monotone"
+                    dataKey="customLineValue"
+                    stroke="#ef4444"
+                    strokeWidth={2}
+                    strokeDasharray="4 4"
+                    name="Custom Trend"
+                    connectNulls={false}
+                    dot={false}
+                  />
+                )}
               </ComposedChart>
             </ResponsiveContainer>
           </div>
