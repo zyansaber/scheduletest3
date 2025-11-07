@@ -21,7 +21,7 @@ const StockLevelAnalysis = ({ data }) => {
   const ymd = (d) => {
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');
-       const dd = String(d.getDate()).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
     return `${y}-${m}-${dd}`;
   };
   const parseYYYYMMDD = (s) => {
@@ -97,7 +97,7 @@ const StockLevelAnalysis = ({ data }) => {
   const getFilteredCalendarData = () => {
     const filteredData = {};
     const startStr = ymd(chartStartDate);
-       const endStr   = ymd(chartEndDate);
+    const endStr   = ymd(chartEndDate);
     Object.entries(calendarData).forEach(([dateStr, quantity]) => {
       if (dateStr >= startStr && dateStr <= endStr) {
         filteredData[dateStr] = quantity;
@@ -264,38 +264,44 @@ const StockLevelAnalysis = ({ data }) => {
       }
     });
 
+    const startValueNum = Number(customLineStartValue);
+    const hasCustomStart = (
+      customLineStartDate &&
+      customLineStartValue !== '' &&
+      !Number.isNaN(startValueNum)
+    );
+    const normalizedStartValue = hasCustomStart ? Math.max(0, startValueNum) : null;
+    const rawCustomStartDate = hasCustomStart ? parseYYYYMMDD(customLineStartDate) : null;
+    const clampedCustomStartDate = rawCustomStartDate
+      ? (rawCustomStartDate < chartStartDate ? chartStartDate : rawCustomStartDate)
+      : null;
+    const customStartKey = clampedCustomStartDate ? ymd(clampedCustomStartDate) : null;
+
     const applyCustomLine = (chartRows) => {
-      if (!customLineStartDate || customLineStartValue === '') {
+      if (!hasCustomStart || !customStartKey) {
         return chartRows;
       }
 
-      const startDateObj = parseYYYYMMDD(customLineStartDate);
-      const startValueNum = Number(customLineStartValue);
-      if (!startDateObj || Number.isNaN(startValueNum)) {
-        return chartRows;
-      }
-
-      const clampedStart = startDateObj < chartStartDate ? chartStartDate : startDateObj;
       const endDateObj = chartEndDate;
-      if (!endDateObj || endDateObj < clampedStart) {
+      if (!endDateObj || !clampedCustomStartDate || endDateObj < clampedCustomStartDate) {
         return chartRows;
       }
 
       const dayMs = 24 * 60 * 60 * 1000;
-      const totalDays = Math.max(0, Math.round((endDateObj - clampedStart) / dayMs));
+      const totalDays = Math.max(0, Math.round((endDateObj - clampedCustomStartDate) / dayMs));
       const endRow = chartRows[chartRows.length - 1];
-      const endValueNum = Number(endRow?.semivanstock ?? startValueNum);
+      const endValueNum = Number(endRow?.semivanstock ?? normalizedStartValue);
 
       return chartRows.map((row) => {
         const rowDate = parseYYYYMMDD(row.date);
-        if (!rowDate || rowDate < clampedStart || rowDate > endDateObj) {
+        if (!rowDate || rowDate < clampedCustomStartDate || rowDate > endDateObj) {
           return { ...row, customLineValue: null };
         }
 
-        const diffDays = Math.round((rowDate - clampedStart) / dayMs);
+        const diffDays = Math.round((rowDate - clampedCustomStartDate) / dayMs);
         const value = totalDays === 0
-          ? startValueNum
-          : startValueNum + ((endValueNum - startValueNum) * (diffDays / totalDays));
+          ? normalizedStartValue
+          : normalizedStartValue + ((endValueNum - normalizedStartValue) * (diffDays / totalDays));
 
         return { ...row, customLineValue: value };
       });
@@ -303,15 +309,15 @@ const StockLevelAnalysis = ({ data }) => {
 
     // 逐日推进
     const chartData = [];
-    const startValueNum = Number(customLineStartValue);
-    const effectiveStartValue = (customLineStartDate && customLineStartValue !== '' && !Number.isNaN(startValueNum))
-      ? Math.max(0, startValueNum)
-      : vanArrivedCount;
-    let currentStock = effectiveStartValue;
+    let currentStock = vanArrivedCount;
 
     const cursor = new Date(chartStartDate);
     while (cursor <= chartEndDate) {
       const key = ymd(cursor);
+
+      if (customStartKey && normalizedStartValue !== null && key === customStartKey) {
+        currentStock = normalizedStartValue;
+      }
 
       // 减法（生产/交付）
       const toReduce = dailyReductions[key] || 0;
@@ -368,11 +374,26 @@ const StockLevelAnalysis = ({ data }) => {
 
   const displayStartingStock = useMemo(() => {
     const startValueNum = Number(customLineStartValue);
-    if (customLineStartDate && customLineStartValue !== '' && !Number.isNaN(startValueNum)) {
+    const hasCustomStart = (
+      customLineStartDate &&
+      customLineStartValue !== '' &&
+      !Number.isNaN(startValueNum)
+    );
+    if (!hasCustomStart) {
+      return vanArrivedCount;
+    }
+
+    const startDateObj = parseYYYYMMDD(customLineStartDate);
+    if (!startDateObj || startDateObj > chartEndDate) {
+      return vanArrivedCount;
+    }
+
+    if (startDateObj <= chartStartDate) {
       return Math.max(0, startValueNum);
     }
+
     return vanArrivedCount;
-  }, [customLineStartDate, customLineStartValue, vanArrivedCount]);
+  }, [customLineStartDate, customLineStartValue, chartEndDate, chartStartDate, vanArrivedCount]);
 
   // ✅ 关键修复：该 hook 必须放在任何 return 之前（避免 React #310）
   useEffect(() => {
@@ -432,7 +453,7 @@ const StockLevelAnalysis = ({ data }) => {
 
       {/* ========== 月度生产计划（减法覆盖，按每日） ========== */}
       <div className="bg-white rounded-lg shadow-md p-6 space-y-4">
-        <div className="flex items中心 justify-between gap-4 flex-wrap">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
           <h2 className="text-xl font-semibold text-gray-800">Monthly Production Plan (Subtract)</h2>
           <label className="inline-flex items-center gap-2 text-sm">
             <input
@@ -532,115 +553,77 @@ const StockLevelAnalysis = ({ data }) => {
             <table className="w-full border-collapse border border-gray-200 text-sm">
               <thead>
                 <tr className="bg-gray-50">
-                  <th className="border border-gray-200 px-3 py-2 text-left">Week #</th>
                   <th className="border border-gray-200 px-3 py-2 text-left">Planned Date</th>
+                  <th className="border border-gray-200 px-3 py-2 text-left">Effective Date (+ offset)</th>
                   <th className="border border-gray-200 px-3 py-2 text-left">Units</th>
-                  <th className="border border-gray-200 px-3 py-2 text-left">Use Custom Date?</th>
-                  <th className="border border-gray-200 px-3 py-2 text-left">Effective Arrival Date</th>
                 </tr>
               </thead>
               <tbody>
-                {weeklyPlan.map((week, index) => {
-                  const resolvedBase = week.isCustomDate
-                    ? parseYYYYMMDD(week.plannedDate)
-                    : parseYYYYMMDD(getDefaultWeeklyDate(index));
-                  const arrivalDate = addDays(resolvedBase, weeklyOffsetDays);
-                  const arrivalInRange = arrivalDate &&
-                    arrivalDate >= chartStartDate &&
-                    arrivalDate <= chartEndDate;
-                  const effectiveDate = arrivalInRange
-                    ? ymd(arrivalDate)
-                    : arrivalDate
-                      ? `${ymd(arrivalDate)} (out of range)`
-                      : '—';
+                {weeklyPlan.map((w, idx) => {
+                  const plannedDate = w.plannedDate || '';
+                  const defaultDate = getDefaultWeeklyDate(idx);
+                  const effectiveDateObj = addDays(parseYYYYMMDD(plannedDate || defaultDate), weeklyOffsetDays);
+                  const effectiveDateStr = effectiveDateObj ? ymd(effectiveDateObj) : '—';
 
                   return (
-                    <tr key={week.id} className="hover:bg-gray-50">
-                      <td className="border border-gray-200 px-3 py-2">{index + 1}</td>
-                      <td className="border border-gray-200 px-3 py-2">
-                        <div className="flex flex-col gap-1">
-                          <input
-                            type="date"
-                            className="border rounded px-2 py-1"
-                            value={week.plannedDate}
-                            onChange={(e) => {
-                              const nextValue = e.target.value;
-                              setWeeklyPlan((prev) =>
-                                prev.map((item, idx) =>
-                                  idx === index
-                                    ? { ...item, plannedDate: nextValue, isCustomDate: true }
-                                    : item
-                                )
-                              );
-                            }}
-                            disabled={!week.isCustomDate}
-                          />
-                          {!week.isCustomDate && (
-                            <span className="text-xs text-gray-500">
-                              Default: {getDefaultWeeklyDate(index)}
-                            </span>
-                          )}
-                        </div>
-                      </td>
+                    <tr key={w.id} className="hover:bg-gray-50">
                       <td className="border border-gray-200 px-3 py-2">
                         <input
-                          type="number"
-                          className="w-24 border rounded px-2 py-1"
-                          min="0"
-                          value={week.units}
+                          type="date"
+                          className="border rounded px-2 py-1"
+                          value={plannedDate}
                           onChange={(e) => {
-                            const units = Number(e.target.value);
-                            setWeeklyPlan((prev) =>
-                              prev.map((item, idx) =>
-                                idx === index ? { ...item, units: Number.isNaN(units) ? 0 : units } : item
-                              )
-                            );
+                            const val = e.target.value;
+                            setWeeklyPlan((prev) => {
+                              const copy = [...prev];
+                              const isCustom = val !== '' && val !== defaultDate;
+                              copy[idx] = {
+                                ...copy[idx],
+                                plannedDate: val,
+                                isCustomDate: isCustom,
+                              };
+                              return copy;
+                            });
                           }}
                         />
                       </td>
+                      <td className="border border-gray-200 px-3 py-2 font-mono text-sm text-gray-700">{effectiveDateStr}</td>
                       <td className="border border-gray-200 px-3 py-2">
-                        <label className="inline-flex items-center gap-2 text-sm">
-                          <input
-                            type="checkbox"
-                            className="w-4 h-4"
-                            checked={week.isCustomDate}
-                            onChange={(e) => {
-                              const checked = e.target.checked;
-                              setWeeklyPlan((prev) =>
-                                prev.map((item, idx) =>
-                                  idx === index
-                                    ? {
-                                        ...item,
-                                        isCustomDate: checked,
-                                        plannedDate: checked ? week.plannedDate : getDefaultWeeklyDate(index),
-                                      }
-                                    : item
-                                )
-                              );
-                            }}
-                          />
-                          <span>Use custom planned date</span>
-                        </label>
-                      </td>
-                      <td className="border border-gray-200 px-3 py-2">
-                        <span className="font-mono text-sm">
-                          {effectiveDate}
-                        </span>
+                        <input
+                          type="number"
+                          className="w-28 border rounded px-2 py-1"
+                          value={w.units}
+                          min="0"
+                          onChange={(e) => {
+                            const val = Math.max(0, Number(e.target.value));
+                            setWeeklyPlan((prev) => {
+                              const copy = [...prev];
+                              copy[idx] = { ...copy[idx], units: val };
+                              return copy;
+                            });
+                          }}
+                        />
                       </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
+            <div className="mt-3 text-xs text-gray-500 space-y-1">
+              <div>Planned Date can be customised. The actual arrival will use this date plus the global start offset.</div>
+              <div>Effective dates outside of the chart range will be ignored automatically.</div>
+            </div>
           </div>
         )}
       </div>
 
-      {/* ========== 自定义趋势线 ========== */}
       <div className="bg-white rounded-lg shadow-md p-6 space-y-4">
         <h2 className="text-xl font-semibold text-gray-800">Custom Trend Line</h2>
+        <p className="text-sm text-gray-600">
+          Choose a starting point to project a dashed trend line through the chart end and override the starting stock value.
+        </p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <label className="text-sm space-y-1">
+          <label className="flex flex-col text-sm gap-1">
             <span>Start Date</span>
             <input
               type="date"
@@ -649,7 +632,7 @@ const StockLevelAnalysis = ({ data }) => {
               onChange={(e) => setCustomLineStartDate(e.target.value)}
             />
           </label>
-          <label className="text-sm space-y-1">
+          <label className="flex flex-col text-sm gap-1">
             <span>Start Value</span>
             <input
               type="number"
@@ -660,7 +643,7 @@ const StockLevelAnalysis = ({ data }) => {
           </label>
         </div>
         <div className="text-xs text-gray-500">
-          The custom line will interpolate from the chosen start point to the chart end using the stock levels.
+          The dashed line will interpolate from the selected start value to the chart end using the calculated stock on the final day.
         </div>
       </div>
 
@@ -668,7 +651,14 @@ const StockLevelAnalysis = ({ data }) => {
       <div className="bg-white rounded-lg shadow-md p-6">
         <h2 className="text-xl font-semibold text-gray-800 mb-4">Semi Van Stock Trend</h2>
         <div className="mb-4 text-sm text-gray-600 space-y-1">
-          <div>Starting stock (Van Arrived): <span className="font-semibold text-blue-600">{displayStartingStock}</span> units</div>
+          <div>
+            Starting stock (Van Arrived):
+            <span className="font-semibold text-blue-600"> {displayStartingStock}</span>
+            <span className="text-blue-400"> units</span>
+            {customLineStartDate && customLineStartValue !== '' && (
+              <span className="ml-2 text-xs text-blue-500">(overridden)</span>
+            )}
+          </div>
           <div>
             Chart period:&nbsp;
             <span className="font-semibold text-green-600">
