@@ -21,7 +21,7 @@ const StockLevelAnalysis = ({ data }) => {
   const ymd = (d) => {
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
+       const dd = String(d.getDate()).padStart(2, '0');
     return `${y}-${m}-${dd}`;
   };
   const parseYYYYMMDD = (s) => {
@@ -78,8 +78,6 @@ const StockLevelAnalysis = ({ data }) => {
 
   const [customLineStartDate, setCustomLineStartDate] = useState('');
   const [customLineStartValue, setCustomLineStartValue] = useState('');
-  const [customLineEndDate, setCustomLineEndDate] = useState('');
-  const [customLineEndValue, setCustomLineEndValue] = useState('');
 
   useEffect(() => {
     const loadCalendarData = async () => {
@@ -99,7 +97,7 @@ const StockLevelAnalysis = ({ data }) => {
   const getFilteredCalendarData = () => {
     const filteredData = {};
     const startStr = ymd(chartStartDate);
-    const endStr   = ymd(chartEndDate);
+       const endStr   = ymd(chartEndDate);
     Object.entries(calendarData).forEach(([dateStr, quantity]) => {
       if (dateStr >= startStr && dateStr <= endStr) {
         filteredData[dateStr] = quantity;
@@ -277,27 +275,24 @@ const StockLevelAnalysis = ({ data }) => {
         return chartRows;
       }
 
-      const fallbackEndDateObj = chartEndDate;
-      const endDateObjRaw = parseYYYYMMDD(customLineEndDate);
-      const endDateObj = (endDateObjRaw && endDateObjRaw >= startDateObj) ? endDateObjRaw : fallbackEndDateObj;
-
-      const endValueProvided = customLineEndValue !== '' && !Number.isNaN(Number(customLineEndValue));
-      const endValueNum = endValueProvided ? Number(customLineEndValue) : startValueNum;
-
-      if (!endDateObj || endDateObj < startDateObj) {
+      const clampedStart = startDateObj < chartStartDate ? chartStartDate : startDateObj;
+      const endDateObj = chartEndDate;
+      if (!endDateObj || endDateObj < clampedStart) {
         return chartRows;
       }
 
       const dayMs = 24 * 60 * 60 * 1000;
-      const totalDays = Math.max(0, Math.round((endDateObj - startDateObj) / dayMs));
+      const totalDays = Math.max(0, Math.round((endDateObj - clampedStart) / dayMs));
+      const endRow = chartRows[chartRows.length - 1];
+      const endValueNum = Number(endRow?.semivanstock ?? startValueNum);
 
       return chartRows.map((row) => {
         const rowDate = parseYYYYMMDD(row.date);
-        if (!rowDate || rowDate < startDateObj || rowDate > endDateObj) {
+        if (!rowDate || rowDate < clampedStart || rowDate > endDateObj) {
           return { ...row, customLineValue: null };
         }
 
-        const diffDays = Math.round((rowDate - startDateObj) / dayMs);
+        const diffDays = Math.round((rowDate - clampedStart) / dayMs);
         const value = totalDays === 0
           ? startValueNum
           : startValueNum + ((endValueNum - startValueNum) * (diffDays / totalDays));
@@ -308,7 +303,11 @@ const StockLevelAnalysis = ({ data }) => {
 
     // 逐日推进
     const chartData = [];
-    let currentStock = getVanArrivedCount();
+    const startValueNum = Number(customLineStartValue);
+    const effectiveStartValue = (customLineStartDate && customLineStartValue !== '' && !Number.isNaN(startValueNum))
+      ? Math.max(0, startValueNum)
+      : vanArrivedCount;
+    let currentStock = effectiveStartValue;
 
     const cursor = new Date(chartStartDate);
     while (cursor <= chartEndDate) {
@@ -347,6 +346,7 @@ const StockLevelAnalysis = ({ data }) => {
 
   // ---- memo 计算 ----
   const monthlyCalendarData = useMemo(() => getMonthlyCalendarData(), [calendarData, chartStartDate, chartEndDate]);
+  const vanArrivedCount     = useMemo(() => getVanArrivedCount(), [data]);
   const combinedChartData   = useMemo(
     () => getCombinedChartData(),
     [
@@ -360,12 +360,19 @@ const StockLevelAnalysis = ({ data }) => {
       weeklyOffsetDays,
       customLineStartDate,
       customLineStartValue,
-      customLineEndDate,
-      customLineEndValue,
+      vanArrivedCount,
     ],
   );
   const vanOnSeaData        = useMemo(() => getVanOnSeaData(), [data]);
   const estimateDateTable   = useMemo(() => getEstimateDateData(), [data, chartStartDate, chartEndDate]);
+
+  const displayStartingStock = useMemo(() => {
+    const startValueNum = Number(customLineStartValue);
+    if (customLineStartDate && customLineStartValue !== '' && !Number.isNaN(startValueNum)) {
+      return Math.max(0, startValueNum);
+    }
+    return vanArrivedCount;
+  }, [customLineStartDate, customLineStartValue, vanArrivedCount]);
 
   // ✅ 关键修复：该 hook 必须放在任何 return 之前（避免 React #310）
   useEffect(() => {
@@ -425,7 +432,7 @@ const StockLevelAnalysis = ({ data }) => {
 
       {/* ========== 月度生产计划（减法覆盖，按每日） ========== */}
       <div className="bg-white rounded-lg shadow-md p-6 space-y-4">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items中心 justify-between gap-4 flex-wrap">
           <h2 className="text-xl font-semibold text-gray-800">Monthly Production Plan (Subtract)</h2>
           <label className="inline-flex items-center gap-2 text-sm">
             <input
@@ -632,7 +639,7 @@ const StockLevelAnalysis = ({ data }) => {
       {/* ========== 自定义趋势线 ========== */}
       <div className="bg-white rounded-lg shadow-md p-6 space-y-4">
         <h2 className="text-xl font-semibold text-gray-800">Custom Trend Line</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <label className="text-sm space-y-1">
             <span>Start Date</span>
             <input
@@ -651,28 +658,9 @@ const StockLevelAnalysis = ({ data }) => {
               onChange={(e) => setCustomLineStartValue(e.target.value)}
             />
           </label>
-          <label className="text-sm space-y-1">
-            <span>End Date (optional)</span>
-            <input
-              type="date"
-              className="border rounded px-2 py-1"
-              value={customLineEndDate}
-              onChange={(e) => setCustomLineEndDate(e.target.value)}
-              min={customLineStartDate || undefined}
-            />
-          </label>
-          <label className="text-sm space-y-1">
-            <span>End Value (optional)</span>
-            <input
-              type="number"
-              className="border rounded px-2 py-1"
-              value={customLineEndValue}
-              onChange={(e) => setCustomLineEndValue(e.target.value)}
-            />
-          </label>
         </div>
         <div className="text-xs text-gray-500">
-          If end point values are left blank, the line will extend to the end of the chart using the start value.
+          The custom line will interpolate from the chosen start point to the chart end using the stock levels.
         </div>
       </div>
 
@@ -680,7 +668,7 @@ const StockLevelAnalysis = ({ data }) => {
       <div className="bg-white rounded-lg shadow-md p-6">
         <h2 className="text-xl font-semibold text-gray-800 mb-4">Semi Van Stock Trend</h2>
         <div className="mb-4 text-sm text-gray-600 space-y-1">
-          <div>Starting stock (Van Arrived): <span className="font-semibold text-blue-600">{getVanArrivedCount()}</span> units</div>
+          <div>Starting stock (Van Arrived): <span className="font-semibold text-blue-600">{displayStartingStock}</span> units</div>
           <div>
             Chart period:&nbsp;
             <span className="font-semibold text-green-600">
